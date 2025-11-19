@@ -1,0 +1,87 @@
+<div align=center>
+
+# Vercel 設定
+
+<div>
+
+## ▶️ 請問 `vercel.json` 裡的 `routes` 是什麼意思？
+
+簡單來說，`routes` 就是**「交通指揮」**。
+
+*   **情境：** 當用戶訪問你的網站網址（例如 `your-site.vercel.app/api/chat`）時，Vercel 的伺服器會問：「這個網址我要交給哪個檔案處理？」
+*   **設定的意思：**
+    ```json
+    "routes": [
+      {
+        "src": "/(.*)",       // 意思是：無論使用者輸入什麼網址 (例如 /abc, /api/v1/chat)
+        "dest": "main.py"     // 全部都丟給 main.py 這個檔案去處理
+      }
+    ]
+    ```
+*   **為什麼要這樣設？**
+    因為你的 `main.py` 裡面已經用 FastAPI 寫好了各種路徑（如 `@app.get("/v1/models")`、`@app.post("/api/chat")`）。我們希望 Vercel 不要管路徑，把所有請求都丟給 FastAPI，讓 FastAPI 自己去分配。
+
+---
+
+## ▶️ 如何修改程式碼以部署到 Vercel？
+
+要在 Vercel 上跑 FastAPI，你需要做 **3 個步驟**。
+
+### 第一步：準備 `requirements.txt` (必備)
+Vercel 需要知道要安裝哪些套件。請在你的專案根目錄新增一個檔案叫 `requirements.txt`，內容如下：
+
+```txt
+fastapi
+uvicorn
+requests
+tiktoken
+mangum
+pydantic
+```
+*注意：`mangum` 是必須新增的，它是讓 Vercel 讀懂 FastAPI 的關鍵翻譯官。*
+
+### 第二步：設定 `vercel.json`
+在專案根目錄新增 `vercel.json`，內容如下（跟你提供的一樣）：
+
+```json
+{
+  "builds": [
+    {
+      "src": "main.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "main.py"
+    }
+  ]
+}
+```
+
+### 第三步：修改 `main.py` (只需改頭跟尾)
+
+你需要修改兩個地方：
+1.  **最上面：** 匯入 `Mangum`。
+2.  **中間：** 宣告 `handler` 變數（這是 Vercel 的入口）。
+3.  **最下面：** 雖然 `if __name__ == "__main__":` 在 Vercel 不會執行，但保留著方便你自己電腦測試。
+
+---
+
+## ⚠️ 部署到 Vercel 的重大隱憂（必讀）
+
+雖然這樣部署一定會成功，程式也能跑，但針對你的 **Grok API 專案**，在 Vercel 免費版上會有一個致命傷：
+
+**❌ 10 秒超時限制 (Timeout)**
+
+*   **問題：** Vercel 免費版規定，一個請求如果 **10 秒** 內沒有處理完，它就會強制切斷連線並報錯 (Timeout Error)。
+*   **你的情況：** AI 生成內容（尤其是 Grok）通常很慢，長一點的回覆很容易超過 10 秒。
+*   **串流 (Streaming) 的問題：** 雖然你有寫 `StreamingResponse`，但 Vercel 的 Python 支援對 Streaming 的處理有時會卡住（Buffer），導致它還是在等全部跑完，進而觸發 10 秒限制。
+
+**建議方案：**
+
+1.  **先試試看：** 既然都寫好了，先部署上去玩玩看。如果是短對話，應該沒問題。
+2.  **如果一直報錯 Timeout：**
+    *   這表示 Vercel 免費版不適合跑這個 AI API。
+    *   請改用 **Render** 或 **Railway**（這兩個就像 Replit，伺服器可以一直開著，沒有 10 秒限制，部署方式也是連動 GitHub 即可，不用改程式碼裡的 `Mangum`）。
